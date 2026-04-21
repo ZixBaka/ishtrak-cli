@@ -59,6 +59,7 @@ type CreateTaskPayload struct {
 	StoryID     string `json:"storyId,omitempty"`
 	ProjectID   string `json:"projectId,omitempty"`
 	Token       string `json:"token,omitempty"`
+	ParentID    string `json:"parentId,omitempty"`
 }
 
 // ListTasksPayload is the payload for LIST_TASKS messages.

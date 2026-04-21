@@ -36,6 +36,7 @@ var (
 	taskDesc      string
 	taskStoryID   string
 	taskProjectID string
+	taskParentID  string
 	taskHost      string
 )
 
@@ -46,6 +47,7 @@ func init() {
 	taskCreateCmd.Flags().StringVarP(&taskDesc, "description", "d", "", "task description")
 	taskCreateCmd.Flags().StringVarP(&taskStoryID, "story", "s", "", "story ID (e.g. PROJ-123)")
 	taskCreateCmd.Flags().StringVar(&taskProjectID, "project", "", "project ID on the platform")
+	taskCreateCmd.Flags().StringVarP(&taskParentID, "parent", "p", "", "parent task ID (creates a subtask/sub-issue)")
 	_ = taskCreateCmd.MarkFlagRequired("title")
 	taskCmd.AddCommand(taskCreateCmd)
 
@@ -73,6 +75,7 @@ func runTaskCreate(_ *cobra.Command, _ []string) error {
 		Description: taskDesc,
 		StoryID:     taskStoryID,
 		ProjectID:   projectID,
+		ParentID:    taskParentID,
 	}
 	resp, err := sendRequest(messaging.TypeCreateTask, payload)
 	if err != nil {
