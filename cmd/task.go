@@ -63,9 +63,9 @@ func init() {
 }
 
 func runTaskCreate(_ *cobra.Command, _ []string) error {
-	host, projectID, _ := resolveHostAndProject(taskHost, taskProjectID)
-	if host == "" {
-		return fmt.Errorf("no platform host specified and none configured in config file")
+	host, projectID, _, err := resolveHostAndProject(taskHost, taskProjectID)
+	if err != nil {
+		return err
 	}
 	payload := messaging.CreateTaskPayload{
 		Host:        host,
@@ -103,9 +103,9 @@ var (
 )
 
 func runTaskList(_ *cobra.Command, _ []string) error {
-	host, projectID, _ := resolveHostAndProject(taskHost, listProjectID)
-	if host == "" {
-		return fmt.Errorf("no platform host specified and none configured in config file")
+	host, projectID, _, err := resolveHostAndProject(taskHost, listProjectID)
+	if err != nil {
+		return err
 	}
 	payload := messaging.ListTasksPayload{
 		Host:      host,
@@ -137,9 +137,9 @@ var taskGetCmd = &cobra.Command{
 }
 
 func runTaskGet(_ *cobra.Command, args []string) error {
-	host, _, _ := resolveHostAndProject(taskHost, "")
-	if host == "" {
-		return fmt.Errorf("no platform host specified and none configured in config file")
+	host, _, _, err := resolveHostAndProject(taskHost, "")
+	if err != nil {
+		return err
 	}
 	payload := messaging.GetTaskPayload{Host: host, TaskID: args[0]}
 	resp, err := sendRequest(messaging.TypeGetTask, payload)
@@ -172,9 +172,9 @@ var (
 )
 
 func runTaskUpdate(_ *cobra.Command, args []string) error {
-	host, _, _ := resolveHostAndProject(taskHost, "")
-	if host == "" {
-		return fmt.Errorf("no platform host specified and none configured in config file")
+	host, _, _, err := resolveHostAndProject(taskHost, "")
+	if err != nil {
+		return err
 	}
 	payload := messaging.UpdateTaskPayload{
 		Host:        host,
@@ -199,7 +199,7 @@ func runTaskUpdate(_ *cobra.Command, args []string) error {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func resolveHostAndProject(hostFlag, projectFlag string) (host, projectID, token string) {
+func resolveHostAndProject(hostFlag, projectFlag string) (host, projectID, token string, err error) {
 	host = hostFlag
 	projectID = projectFlag
 	for h, p := range cfg.Platforms {
@@ -214,7 +214,27 @@ func resolveHostAndProject(hostFlag, projectFlag string) (host, projectID, token
 			break
 		}
 	}
+	if host == "" {
+		host, err = getActiveHostFromDaemon()
+	}
 	return
+}
+
+func getActiveHostFromDaemon() (string, error) {
+	resp, err := sendRequest(messaging.TypeGetActiveHost, map[string]interface{}{})
+	if err != nil {
+		return "", err
+	}
+	if err := checkResp(resp); err != nil {
+		return "", err
+	}
+	var result struct {
+		Host string `json:"host"`
+	}
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return "", fmt.Errorf("parse active host: %w", err)
+	}
+	return result.Host, nil
 }
 
 func sendRequest(msgType string, payload interface{}) (*messaging.CommandResponse, error) {

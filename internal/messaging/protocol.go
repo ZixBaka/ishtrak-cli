@@ -14,6 +14,7 @@ const (
 	TypeListTasks      = "LIST_TASKS"
 	TypeGetTask        = "GET_TASK"
 	TypeUpdateTask     = "UPDATE_TASK"
+	TypeGetActiveHost  = "GET_ACTIVE_HOST"
 )
 
 // Response types (host → extension, or extension → CLI)
