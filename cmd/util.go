@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -15,9 +16,9 @@ func selfExecutable() (string, error) {
 	return exe, nil
 }
 
-func checkResp(resp *messaging.CommandResponse) {
+func checkResp(resp *messaging.CommandResponse) error {
 	if resp.Error != "" {
-		fmt.Fprintln(os.Stderr, "error:", resp.Error)
-		os.Exit(1)
+		return errors.New(resp.Error)
 	}
+	return nil
 }

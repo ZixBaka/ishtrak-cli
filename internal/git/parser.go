@@ -30,7 +30,6 @@ var storyPatterns = []*regexp.Regexp{
 
 // ParseLatestCommit returns CommitInfo for HEAD in the current git repo.
 func ParseLatestCommit(customPattern string) (*CommitInfo, error) {
-	// Single subprocess for hash, subject, and body.
 	out, err := gitOutput("log", "-1", "--pretty=format:%H%n%s%n%b")
 	if err != nil {
 		return nil, err

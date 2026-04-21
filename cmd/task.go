@@ -13,6 +13,11 @@ import (
 	"github.com/zixbaka/ishtrak/internal/messaging"
 )
 
+var (
+	healthClient  = &http.Client{Timeout: 500 * time.Millisecond}
+	commandClient = &http.Client{Timeout: 35 * time.Second}
+)
+
 var taskCmd = &cobra.Command{
 	Use:   "task",
 	Short: "Manage tasks on your project management platform",
@@ -31,7 +36,7 @@ var (
 	taskDesc      string
 	taskStoryID   string
 	taskProjectID string
-	taskHost      string // persistent flag shared by all task subcommands
+	taskHost      string
 )
 
 func init() {
@@ -73,7 +78,9 @@ func runTaskCreate(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	checkResp(resp)
+	if err := checkResp(resp); err != nil {
+		return err
+	}
 	var task messaging.Task
 	if err := json.Unmarshal(resp.Data, &task); err != nil {
 		return fmt.Errorf("parse response: %w", err)
@@ -110,7 +117,9 @@ func runTaskList(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	checkResp(resp)
+	if err := checkResp(resp); err != nil {
+		return err
+	}
 	var tasks []messaging.Task
 	if err := json.Unmarshal(resp.Data, &tasks); err != nil {
 		return fmt.Errorf("parse response: %w", err)
@@ -137,7 +146,9 @@ func runTaskGet(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	checkResp(resp)
+	if err := checkResp(resp); err != nil {
+		return err
+	}
 	var task messaging.Task
 	if err := json.Unmarshal(resp.Data, &task); err != nil {
 		return fmt.Errorf("parse response: %w", err)
@@ -176,7 +187,9 @@ func runTaskUpdate(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	checkResp(resp)
+	if err := checkResp(resp); err != nil {
+		return err
+	}
 	var task messaging.Task
 	if err := json.Unmarshal(resp.Data, &task); err != nil {
 		return fmt.Errorf("parse response: %w", err)
@@ -212,8 +225,7 @@ func sendRequest(msgType string, payload interface{}) (*messaging.CommandRespons
 }
 
 func ensureDaemon() error {
-	client := &http.Client{Timeout: 500 * time.Millisecond}
-	if resp, err := client.Get("http://" + daemonAddr + "/health"); err == nil {
+	if resp, err := healthClient.Get("http://" + daemonAddr + "/health"); err == nil {
 		resp.Body.Close()
 		return nil
 	}
@@ -235,7 +247,7 @@ func ensureDaemon() error {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(200 * time.Millisecond)
-		resp, err := client.Get("http://" + daemonAddr + "/health")
+		resp, err := healthClient.Get("http://" + daemonAddr + "/health")
 		if err != nil {
 			continue
 		}
@@ -260,8 +272,7 @@ func daemonCommand(msgType string, payload interface{}) (*messaging.CommandRespo
 		return nil, err
 	}
 
-	client := &http.Client{Timeout: 35 * time.Second}
-	resp, err := client.Post(
+	resp, err := commandClient.Post(
 		"http://"+daemonAddr+"/command",
 		"application/json",
 		bytes.NewReader(body),
