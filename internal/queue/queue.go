@@ -8,14 +8,22 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"github.com/zixbaka/ishtrak/internal/config"
 )
 
-var mu sync.Mutex
+var (
+	mu      sync.Mutex
+	dirOnce sync.Once
+)
 
 // DefaultPath returns ~/.config/ishtrak/pending.jsonl
 func DefaultPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "ishtrak", "pending.jsonl")
+	return filepath.Join(config.ConfigDir(), "pending.jsonl")
+}
+
+func ensureDir() {
+	dirOnce.Do(func() { os.MkdirAll(filepath.Dir(DefaultPath()), 0o700) }) //nolint:errcheck
 }
 
 // Enqueue appends item as a JSON line to the queue file.
@@ -23,12 +31,8 @@ func Enqueue(item interface{}) error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	path := DefaultPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	ensureDir()
+	f, err := os.OpenFile(DefaultPath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
@@ -52,7 +56,7 @@ func DrainAll() ([]json.RawMessage, error) {
 		return nil, err
 	}
 
-	// Clear queue before processing so a crash doesn't re-process
+	// Truncate before decoding so a crash between these two operations doesn't replay items.
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		return nil, err
 	}

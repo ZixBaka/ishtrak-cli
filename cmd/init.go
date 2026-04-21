@@ -73,14 +73,19 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("Step 3: Creating config file...")
 	cfgFile := config.DefaultConfigPath()
-	if _, err := os.Stat(cfgFile); err == nil {
-		fmt.Printf("  Config already exists at %s — skipping.\n", cfgFile)
-	} else {
-		if err := os.MkdirAll(filepath.Dir(cfgFile), 0o700); err != nil {
-			return fmt.Errorf("create config dir: %w", err)
+	if err := os.MkdirAll(filepath.Dir(cfgFile), 0o700); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+	f, err := os.OpenFile(cfgFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			fmt.Printf("  Config already exists at %s — skipping.\n", cfgFile)
+		} else {
+			return fmt.Errorf("write config: %w", err)
 		}
-		skeleton := config.Skeleton(extID)
-		if err := os.WriteFile(cfgFile, []byte(skeleton), 0o600); err != nil {
+	} else {
+		defer f.Close()
+		if _, err := f.WriteString(config.Skeleton(extID)); err != nil {
 			return fmt.Errorf("write config: %w", err)
 		}
 		fmt.Printf("  Config written to %s\n", cfgFile)

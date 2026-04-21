@@ -12,19 +12,25 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/zixbaka/ishtrak/internal/config"
 	"github.com/zixbaka/ishtrak/internal/messaging"
 )
 
-var mu sync.Mutex
+var (
+	mu           sync.Mutex
+	reqDirOnce   sync.Once
+	respDirOnce  sync.Once
+)
 
-func requestsDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "ishtrak", "requests")
+func requestsDir() string  { return filepath.Join(config.ConfigDir(), "requests") }
+func responsesDir() string { return filepath.Join(config.ConfigDir(), "responses") }
+
+func ensureRequestsDir() {
+	reqDirOnce.Do(func() { os.MkdirAll(requestsDir(), 0o700) }) //nolint:errcheck
 }
 
-func responsesDir() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "ishtrak", "responses")
+func ensureResponsesDir() {
+	respDirOnce.Do(func() { os.MkdirAll(responsesDir(), 0o700) }) //nolint:errcheck
 }
 
 // WriteRequest writes a command request to disk and returns its UUID.
@@ -46,12 +52,8 @@ func WriteRequest(msgType string, payload interface{}) (string, error) {
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	dir := requestsDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("create requests dir: %w", err)
-	}
-
-	path := filepath.Join(dir, id+".json")
+	ensureRequestsDir()
+	path := filepath.Join(requestsDir(), id+".json")
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return "", fmt.Errorf("write request file: %w", err)
 	}
@@ -96,10 +98,7 @@ func ReadAllRequests() ([]messaging.CommandRequest, error) {
 
 // WriteResponse writes a command response to the responses directory.
 func WriteResponse(id string, data interface{}, errMsg string) error {
-	dir := responsesDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("create responses dir: %w", err)
-	}
+	ensureResponsesDir()
 
 	resp := messaging.CommandResponse{UUID: id, Error: errMsg}
 	if data != nil && errMsg == "" {
@@ -115,7 +114,7 @@ func WriteResponse(id string, data interface{}, errMsg string) error {
 		return fmt.Errorf("marshal response: %w", err)
 	}
 
-	path := filepath.Join(dir, id+".json")
+	path := filepath.Join(responsesDir(), id+".json")
 	return os.WriteFile(path, out, 0o600)
 }
 

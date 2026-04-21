@@ -19,33 +19,38 @@ type CommitInfo struct {
 // storyPatterns are the regexes tried in order when extracting story IDs.
 // Each captures the story ID in group 1.
 var storyPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\[([A-Z]{2,10}-\d{1,6})\]`),          // [PROJ-123]
-	regexp.MustCompile(`\(([A-Z]{2,10}-\d{1,6})\)`),          // (PROJ-123)
-	regexp.MustCompile(`^([A-Z]{2,10}-\d{1,6}):`),            // PROJ-123: at start
+	regexp.MustCompile(`\[([A-Z]{2,10}-\d{1,6})\]`),           // [PROJ-123]
+	regexp.MustCompile(`\(([A-Z]{2,10}-\d{1,6})\)`),           // (PROJ-123)
+	regexp.MustCompile(`^([A-Z]{2,10}-\d{1,6}):`),             // PROJ-123: at start
 	regexp.MustCompile(`(?i)closes?\s+([A-Z]{2,10}-\d{1,6})`), // closes PROJ-123
 	regexp.MustCompile(`(?i)refs?\s+([A-Z]{2,10}-\d{1,6})`),  // refs PROJ-123
-	regexp.MustCompile(`([A-Z]{2,10}-\d{1,6})`),              // bare PROJ-123 (last resort)
-	regexp.MustCompile(`#(\d+)`),                              // #42 (GitHub-style numeric)
+	regexp.MustCompile(`([A-Z]{2,10}-\d{1,6})`),               // bare PROJ-123 (last resort)
+	regexp.MustCompile(`#(\d+)`),                               // #42 (GitHub-style numeric)
 }
 
 // ParseLatestCommit returns CommitInfo for HEAD in the current git repo.
 func ParseLatestCommit(customPattern string) (*CommitInfo, error) {
-	hash, err := gitOutput("log", "-1", "--pretty=format:%H")
+	// Single subprocess for hash, subject, and body.
+	out, err := gitOutput("log", "-1", "--pretty=format:%H%n%s%n%b")
 	if err != nil {
 		return nil, err
 	}
-	subject, err := gitOutput("log", "-1", "--pretty=format:%s")
-	if err != nil {
-		return nil, err
+	parts := strings.SplitN(out, "\n", 3)
+	hash := strings.TrimSpace(parts[0])
+	subject := ""
+	if len(parts) > 1 {
+		subject = strings.TrimSpace(parts[1])
 	}
-	body, err := gitOutput("log", "-1", "--pretty=format:%b")
-	if err != nil {
-		return nil, err
+	body := ""
+	if len(parts) > 2 {
+		body = strings.TrimSpace(parts[2])
 	}
+
 	branch, err := gitOutput("branch", "--show-current")
 	if err != nil {
 		branch = "" // detached HEAD – not fatal
 	}
+	branch = strings.TrimSpace(branch)
 
 	var patterns []*regexp.Regexp
 	if customPattern != "" {
@@ -58,14 +63,12 @@ func ParseLatestCommit(customPattern string) (*CommitInfo, error) {
 		patterns = storyPatterns
 	}
 
-	stories := extractStories(patterns, branch, subject, body)
-
 	return &CommitInfo{
-		Hash:    strings.TrimSpace(hash),
-		Subject: strings.TrimSpace(subject),
-		Body:    strings.TrimSpace(body),
-		Branch:  strings.TrimSpace(branch),
-		Stories: stories,
+		Hash:    hash,
+		Subject: subject,
+		Body:    body,
+		Branch:  branch,
+		Stories: extractStories(patterns, branch, subject, body),
 	}, nil
 }
 

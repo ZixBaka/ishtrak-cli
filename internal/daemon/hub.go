@@ -28,24 +28,20 @@ type pollResponse struct {
 	Error string          `json:"error,omitempty"`
 }
 
-type waiter struct {
-	ch chan pollResponse
-}
-
 // Hub manages the long-poll connection between the daemon and the browser extension.
 // The extension calls GET /poll (blocks up to 20s), picks up a command, processes
 // it, then POSTs the result to /response — keeping its service worker alive the
 // whole time via the in-flight fetch.
 type Hub struct {
 	mu           sync.Mutex
-	waiters      map[string]*waiter
+	waiters      map[string]chan pollResponse
 	queue        chan *envelope
 	lastPollTime int64 // unix nano, updated atomically on each incoming poll
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		waiters: make(map[string]*waiter),
+		waiters: make(map[string]chan pollResponse),
 		queue:   make(chan *envelope, 64),
 	}
 }
@@ -72,7 +68,7 @@ func (h *Hub) Send(ctx context.Context, msgType string, payload interface{}) (js
 
 	ch := make(chan pollResponse, 1)
 	h.mu.Lock()
-	h.waiters[id] = &waiter{ch: ch}
+	h.waiters[id] = ch
 	h.mu.Unlock()
 
 	defer func() {
@@ -117,13 +113,13 @@ func (h *Hub) Poll(ctx context.Context) (*envelope, bool) {
 // Respond is called by the extension's POST /response request.
 func (h *Hub) Respond(resp pollResponse) {
 	h.mu.Lock()
-	w, ok := h.waiters[resp.ID]
+	ch, ok := h.waiters[resp.ID]
 	if ok {
 		delete(h.waiters, resp.ID)
 	}
 	h.mu.Unlock()
 
 	if ok {
-		w.ch <- resp
+		ch <- resp
 	}
 }

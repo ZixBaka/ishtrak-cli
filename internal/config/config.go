@@ -4,22 +4,28 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/BurntSushi/toml"
 )
 
-// DefaultConfigPath returns ~/.config/ishtrak/config.toml
-func DefaultConfigPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "ishtrak", "config.toml")
+var (
+	configDirOnce sync.Once
+	configDirVal  string
+)
+
+// ConfigDir returns ~/.config/ishtrak, computed once.
+func ConfigDir() string {
+	configDirOnce.Do(func() {
+		home, _ := os.UserHomeDir()
+		configDirVal = filepath.Join(home, ".config", "ishtrak")
+	})
+	return configDirVal
 }
 
-// DefaultLogPath returns ~/.config/ishtrak/ishtrak.log
-func DefaultLogPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "ishtrak", "ishtrak.log")
-}
+func DefaultConfigPath() string { return filepath.Join(ConfigDir(), "config.toml") }
+func DefaultLogPath() string    { return filepath.Join(ConfigDir(), "ishtrak.log") }
 
 // Config is the top-level configuration structure.
 type Config struct {

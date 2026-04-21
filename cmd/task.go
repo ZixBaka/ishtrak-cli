@@ -31,17 +31,30 @@ var (
 	taskDesc      string
 	taskStoryID   string
 	taskProjectID string
-	taskHost      string
+	taskHost      string // persistent flag shared by all task subcommands
 )
 
 func init() {
+	taskCmd.PersistentFlags().StringVar(&taskHost, "host", "", "platform host")
+
 	taskCreateCmd.Flags().StringVarP(&taskTitle, "title", "t", "", "task title (required)")
 	taskCreateCmd.Flags().StringVarP(&taskDesc, "description", "d", "", "task description")
 	taskCreateCmd.Flags().StringVarP(&taskStoryID, "story", "s", "", "story ID (e.g. PROJ-123)")
 	taskCreateCmd.Flags().StringVar(&taskProjectID, "project", "", "project ID on the platform")
-	taskCreateCmd.Flags().StringVar(&taskHost, "host", "", "platform host")
 	_ = taskCreateCmd.MarkFlagRequired("title")
 	taskCmd.AddCommand(taskCreateCmd)
+
+	taskListCmd.Flags().StringVar(&listProjectID, "project", "", "project ID")
+	taskListCmd.Flags().StringVar(&listStatus, "status", "", "filter by status (e.g. \"In Progress\")")
+	taskListCmd.Flags().IntVar(&listLimit, "limit", 20, "max number of tasks to return")
+	taskCmd.AddCommand(taskListCmd)
+
+	taskCmd.AddCommand(taskGetCmd)
+
+	taskUpdateCmd.Flags().StringVarP(&updateTitle, "title", "t", "", "new title")
+	taskUpdateCmd.Flags().StringVarP(&updateDesc, "description", "d", "", "new description")
+	taskUpdateCmd.Flags().StringVar(&updateStatus, "status", "", "new status (e.g. \"In Progress\")")
+	taskCmd.AddCommand(taskUpdateCmd)
 }
 
 func runTaskCreate(_ *cobra.Command, _ []string) error {
@@ -60,10 +73,7 @@ func runTaskCreate(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if resp.Error != "" {
-		fmt.Fprintln(os.Stderr, "error:", resp.Error)
-		os.Exit(1)
-	}
+	checkResp(resp)
 	var task messaging.Task
 	if err := json.Unmarshal(resp.Data, &task); err != nil {
 		return fmt.Errorf("parse response: %w", err)
@@ -83,19 +93,10 @@ var (
 	listStatus    string
 	listLimit     int
 	listProjectID string
-	listHost      string
 )
 
-func init() {
-	taskListCmd.Flags().StringVar(&listProjectID, "project", "", "project ID")
-	taskListCmd.Flags().StringVar(&listHost, "host", "", "platform host")
-	taskListCmd.Flags().StringVar(&listStatus, "status", "", "filter by status (e.g. \"In Progress\")")
-	taskListCmd.Flags().IntVar(&listLimit, "limit", 20, "max number of tasks to return")
-	taskCmd.AddCommand(taskListCmd)
-}
-
 func runTaskList(_ *cobra.Command, _ []string) error {
-	host, projectID, _ := resolveHostAndProject(listHost, listProjectID)
+	host, projectID, _ := resolveHostAndProject(taskHost, listProjectID)
 	if host == "" {
 		return fmt.Errorf("no platform host specified and none configured in config file")
 	}
@@ -109,10 +110,7 @@ func runTaskList(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if resp.Error != "" {
-		fmt.Fprintln(os.Stderr, "error:", resp.Error)
-		os.Exit(1)
-	}
+	checkResp(resp)
 	var tasks []messaging.Task
 	if err := json.Unmarshal(resp.Data, &tasks); err != nil {
 		return fmt.Errorf("parse response: %w", err)
@@ -129,15 +127,8 @@ var taskGetCmd = &cobra.Command{
 	RunE:  runTaskGet,
 }
 
-var getHost string
-
-func init() {
-	taskGetCmd.Flags().StringVar(&getHost, "host", "", "platform host")
-	taskCmd.AddCommand(taskGetCmd)
-}
-
 func runTaskGet(_ *cobra.Command, args []string) error {
-	host, _, _ := resolveHostAndProject(getHost, "")
+	host, _, _ := resolveHostAndProject(taskHost, "")
 	if host == "" {
 		return fmt.Errorf("no platform host specified and none configured in config file")
 	}
@@ -146,10 +137,7 @@ func runTaskGet(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if resp.Error != "" {
-		fmt.Fprintln(os.Stderr, "error:", resp.Error)
-		os.Exit(1)
-	}
+	checkResp(resp)
 	var task messaging.Task
 	if err := json.Unmarshal(resp.Data, &task); err != nil {
 		return fmt.Errorf("parse response: %w", err)
@@ -170,19 +158,10 @@ var (
 	updateTitle  string
 	updateDesc   string
 	updateStatus string
-	updateHost   string
 )
 
-func init() {
-	taskUpdateCmd.Flags().StringVar(&updateHost, "host", "", "platform host")
-	taskUpdateCmd.Flags().StringVarP(&updateTitle, "title", "t", "", "new title")
-	taskUpdateCmd.Flags().StringVarP(&updateDesc, "description", "d", "", "new description")
-	taskUpdateCmd.Flags().StringVar(&updateStatus, "status", "", "new status (e.g. \"In Progress\")")
-	taskCmd.AddCommand(taskUpdateCmd)
-}
-
 func runTaskUpdate(_ *cobra.Command, args []string) error {
-	host, _, _ := resolveHostAndProject(updateHost, "")
+	host, _, _ := resolveHostAndProject(taskHost, "")
 	if host == "" {
 		return fmt.Errorf("no platform host specified and none configured in config file")
 	}
@@ -197,10 +176,7 @@ func runTaskUpdate(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if resp.Error != "" {
-		fmt.Fprintln(os.Stderr, "error:", resp.Error)
-		os.Exit(1)
-	}
+	checkResp(resp)
 	var task messaging.Task
 	if err := json.Unmarshal(resp.Data, &task); err != nil {
 		return fmt.Errorf("parse response: %w", err)
@@ -228,7 +204,6 @@ func resolveHostAndProject(hostFlag, projectFlag string) (host, projectID, token
 	return
 }
 
-// sendRequest ensures the daemon is running and forwards the command to it.
 func sendRequest(msgType string, payload interface{}) (*messaging.CommandResponse, error) {
 	if err := ensureDaemon(); err != nil {
 		return nil, err
@@ -236,20 +211,16 @@ func sendRequest(msgType string, payload interface{}) (*messaging.CommandRespons
 	return daemonCommand(msgType, payload)
 }
 
-// ensureDaemon starts the daemon if it is not already running.
-// When the daemon is freshly started, it waits up to 5s for the extension to connect.
 func ensureDaemon() error {
 	client := &http.Client{Timeout: 500 * time.Millisecond}
-
-	if resp, err := client.Get("http://127.0.0.1:7474/health"); err == nil {
+	if resp, err := client.Get("http://" + daemonAddr + "/health"); err == nil {
 		resp.Body.Close()
-		return nil // daemon already running; let the command itself handle "not connected"
+		return nil
 	}
 
-	// Auto-start daemon in background.
-	exe, err := os.Executable()
+	exe, err := selfExecutable()
 	if err != nil {
-		return fmt.Errorf("find ishtrak executable: %w", err)
+		return err
 	}
 	cmd := exec.Command(exe, "daemon")
 	cmd.Stdin = nil
@@ -259,12 +230,12 @@ func ensureDaemon() error {
 		return fmt.Errorf("start daemon: %w", err)
 	}
 
-	// Wait for daemon ready, then for extension to connect (up to 5s total).
+	// Wait up to 5s for daemon to start and extension to connect.
 	fmt.Fprintln(os.Stderr, "starting daemon, waiting for extension to connect...")
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(200 * time.Millisecond)
-		resp, err := client.Get("http://127.0.0.1:7474/health")
+		resp, err := client.Get("http://" + daemonAddr + "/health")
 		if err != nil {
 			continue
 		}
@@ -277,12 +248,9 @@ func ensureDaemon() error {
 			return nil
 		}
 	}
-	// Daemon is up but extension didn't connect yet — proceed and let the
-	// daemon return a clear "extension not connected" error if needed.
 	return nil
 }
 
-// daemonCommand sends a command to the daemon and returns the response.
 func daemonCommand(msgType string, payload interface{}) (*messaging.CommandResponse, error) {
 	body, err := json.Marshal(map[string]interface{}{
 		"type":    msgType,
@@ -294,7 +262,7 @@ func daemonCommand(msgType string, payload interface{}) (*messaging.CommandRespo
 
 	client := &http.Client{Timeout: 35 * time.Second}
 	resp, err := client.Post(
-		"http://127.0.0.1:7474/command",
+		"http://"+daemonAddr+"/command",
 		"application/json",
 		bytes.NewReader(body),
 	)

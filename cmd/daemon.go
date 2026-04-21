@@ -14,6 +14,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/zixbaka/ishtrak/internal/config"
 	"github.com/zixbaka/ishtrak/internal/daemon"
 )
 
@@ -141,13 +142,12 @@ func launchdPlistPath() (string, error) {
 }
 
 func installLaunchd() error {
-	exe, err := os.Executable()
+	exe, err := selfExecutable()
 	if err != nil {
-		return fmt.Errorf("find ishtrak executable: %w", err)
+		return err
 	}
 
-	home, _ := os.UserHomeDir()
-	logDir := filepath.Join(home, ".config", "ishtrak")
+	logDir := config.ConfigDir()
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		return err
 	}
@@ -225,9 +225,9 @@ func systemdUnitPath() (string, error) {
 }
 
 func installSystemd() error {
-	exe, err := os.Executable()
+	exe, err := selfExecutable()
 	if err != nil {
-		return fmt.Errorf("find ishtrak executable: %w", err)
+		return err
 	}
 
 	unitPath, err := systemdUnitPath()
